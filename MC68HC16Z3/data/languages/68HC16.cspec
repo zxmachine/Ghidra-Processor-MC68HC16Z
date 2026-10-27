@@ -202,10 +202,9 @@
     <register name="SP"/>
     <register name="SK"/>
     <register name="IX"/>
-    <register name="IZ"/>
     <register name="XK"/>
     <register name="YK"/>
-    <register name="ZK"/>
+    <register name="ZKIZ"/>  <!-- ZK:IZ, so the composite used by ,Z addressing is preserved as a whole -->
     <register name="PK"/>
     <register name="EK"/>
   </unaffected>
@@ -243,10 +242,9 @@
     <register name="SP"/>
     <register name="SK"/>
     <register name="IX"/>
-    <register name="IZ"/>
     <register name="XK"/>
     <register name="YK"/>
-    <register name="ZK"/>
+    <register name="ZKIZ"/>  <!-- ZK:IZ, so the composite used by ,Z addressing is preserved as a whole -->
     <register name="PK"/>
     <register name="EK"/>
   </unaffected>
@@ -286,10 +284,9 @@
     <register name="SP"/>
     <register name="SK"/>
     <register name="IX"/>
-    <register name="IZ"/>
     <register name="XK"/>
     <register name="YK"/>
-    <register name="ZK"/>
+    <register name="ZKIZ"/>  <!-- ZK:IZ, so the composite used by ,Z addressing is preserved as a whole -->
     <register name="PK"/>
     <register name="EK"/>
   </unaffected>
