@@ -7,6 +7,8 @@
 
 340D | PSHM D,IX,IY | PSHM mask 0x0D = D,IX,IY      (PSHM_PULM.sinc:17)
 350D | PULM CCR,IZ,IY | PULM mask 0x0D = CCR,IZ,IY   (PSHM_PULM.sinc:275)
+348D | PSHM D,IX,IY,RSVD7 | PSHM mask 0x8D: reserved bit 7 shown as RSVD7 (so the assembler never picks it)
+358D | PULM CCR,IZ,IY,RSVD7 | PULM mask 0x8D: reserved bit 7 shown as RSVD7
 27B8 | PSHMAC | PSHMAC
 27B9 | PULMAC | PULMAC
 7B11 | MAC 0x1,0x1 | MAC  xo=+1, yo=+1
