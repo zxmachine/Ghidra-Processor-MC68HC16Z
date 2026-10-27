@@ -34,7 +34,13 @@ define register offset=0x00 size=1 [ A B ];
 define register offset=0x02 size=2 [ E ];
 
 # = Index Registers and Stack Pointer (16-bit) =
-define register offset=0x10 size=2 [ IX IY IZ ];
+define register offset=0x10 size=2 [ IX IY ];
+# IZ and its extension field also form one 3-byte register ZKIZ = ZK:IZ (the layout of SSP = SK:SP),
+# so that ,Z addressing and TSZ/TZS work on the 20-bit value and the decompiler can follow
+# ZK:IZ = SK:SP + 2 after TSZ into frame-pointer accesses.
+define register offset=0xB0 size=3 [ ZKIZ ];
+define register offset=0xB0 size=1 [ ZK ];
+define register offset=0xB1 size=2 [ IZ ];
 
 # = Program Counter (full 24-bit for Ghidra's address space) =
 define register offset=0x20 size=3 [ PC ];
@@ -55,7 +61,7 @@ define bitrange
     IP_bits=CCR[5,3]  SM_flag=CCR[4,1];
 
 # = Address Extension Fields (4-bit each, stored as 1-byte) =
-define register offset=0x40 size=1 [ PK EK XK YK ZK ];
+define register offset=0x40 size=1 [ PK EK XK YK ];
 
 
 # = MAC Registers =
@@ -279,18 +285,22 @@ define pcodeop background_debug;     # BGND   - enter Background Debug Mode / br
 # =============================================================================
 
 # = 8-bit Indexed (IND8,X / IND8,Y / IND8,Z) =
-# Unsigned 8-bit offset added to index register + extension
+# Unsigned 8-bit offset added to index register + extension.
+# ,Z forms: EA = (ZK:IZ) + offset as a 20-bit sum (CPU16RM 4.3.3, Table 3-1), using the ZK register.
+# (v1.1.0 took the bank from the ctxZK context instead, which hid IZ frame pointers set by TSZ;
+# firmware that keeps IZ/ZK fixed as a data pointer should tell the decompiler ZK's value at
+# function entries, as it does IZ's.) The ,X and ,Y forms still add the offset within the bank.
 
 IND8X: imm8^",X"  is imm8  { local ea:3 = (zext(XK:1) << 16) | zext(IX + zext(imm8:2)); export ea; }
 IND8Y: imm8^",Y"  is imm8  { local ea:3 = (zext(YK:1) << 16) | zext(IY + zext(imm8:2)); export ea; }
-IND8Z: imm8^",Z"  is imm8 & ctxZK  { local bank:1 = ctxZK; local ea:3 = (zext(bank) << 16) | zext(IZ + zext(imm8:2)); export ea; }
+IND8Z: imm8^",Z"  is imm8  { local off:1 = imm8; local ea:3 = ZKIZ + zext(off); export ea; }
 
 # = 16-bit Indexed (IND16,X / IND16,Y / IND16,Z) =
 # Signed 16-bit offset added to index register + extension
 
 IND16X: simm16^",X"  is simm16  { local ea:3 = (zext(XK:1) << 16) | zext(IX + simm16); export ea; }
 IND16Y: simm16^",Y"  is simm16  { local ea:3 = (zext(YK:1) << 16) | zext(IY + simm16); export ea; }
-IND16Z: simm16^",Z"  is simm16 & ctxZK  { local bank:1 = ctxZK; local ea:3 = (zext(bank) << 16) | zext(IZ + simm16); export ea; }
+IND16Z: simm16^",Z"  is simm16  { local off:2 = simm16; local ea:3 = ZKIZ + sext(off); export ea; }
 
 # = Extended (EXT) =
 # EK concatenated with 16-bit address
@@ -314,7 +324,7 @@ EXT16: reloc  is addr16 & ctxEK  [ reloc = (ctxEK << 16) | addr16; ]
 
 EOFFX: E,IX  is E & IX  { local ea:3 = (zext(XK:1) << 16) | zext(IX + E); export ea; }
 EOFFY: E,IY  is E & IY  { local ea:3 = (zext(YK:1) << 16) | zext(IY + E); export ea; }
-EOFFZ: E,IZ  is E & IZ & ctxZK  { local bank:1 = ctxZK; local ea:3 = (zext(bank) << 16) | zext(IZ + E); export ea; }
+EOFFZ: E,IZ  is E & IZ  { local ea:3 = ZKIZ + sext(E); export ea; }
 
 # = Relative Addressing =
 # CPU16 pipeline: branch offsets are ALWAYS relative to inst_start + 6 (3-word prefetch)
@@ -1042,37 +1052,31 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 :TXS   is op8=0x37; op8b=0x4E  {
     local tmp:3 = (zext(XK:1) << 16) | zext(IX:2);
     tmp = tmp - 2;
-    SK = tmp[16,4];
+    SK = tmp(2);
     SP = tmp:2;
 }
 :TYS   is op8=0x37; op8b=0x5E  {
     local tmp:3 = (zext(YK:1) << 16) | zext(IY:2);
     tmp = tmp - 2;
-    SK = tmp[16,4];
+    SK = tmp(2);
     SP = tmp:2;
 }
 :TZS   is op8=0x37; op8b=0x6E  {
-    local tmp:3 = (zext(ZK:1) << 16) | zext(IZ:2);
-    tmp = tmp - 2;
-    SK = tmp[16,4];
-    SP = tmp:2;
+    SSP = ZKIZ - 2;
 }
 # = Transfer SP to Index (with +2) =
 :TSX   is op8=0x27; op8b=0x4F  {
     local tmp:3 = SSP + 2;
-    XK = tmp[16,4];
+    XK = tmp(2);
     IX = tmp:2;
 }
 :TSY   is op8=0x27; op8b=0x5F  {
-    local tmp:3 = (zext(SK:1) << 16) | zext(SP:2);
-    tmp = tmp + 2;
-    YK = tmp[16,4];
+    local tmp:3 = SSP + 2;
+    YK = tmp(2);
     IY = tmp:2;
 }
 :TSZ   is op8=0x27; op8b=0x6F  {
-    local tmp:3 = SSP + 2;
-    ZK = tmp[16,4];
-    IZ = tmp:2;
+    ZKIZ = SSP + 2;
 }
 
 # = Inter-index-register transfers =
@@ -1824,10 +1828,9 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 }
 
 # BCLR IND8,Z: 17 28 mm ff
-:BCLR imm8_2^",Z,#"^mask8  is op8=0x17; op8b=0x28; mask8; imm8_2 & ctxZK{
-    local bank:1 = ctxZK;
+:BCLR imm8_2^",Z,#"^mask8  is op8=0x17; op8b=0x28; mask8; imm8_2 {
     local off:1 = imm8_2;
-    local ea:3 = (zext(bank) << 16) | zext(IZ + zext(off));
+    local ea:3 = ZKIZ + zext(off);
     local val:1 = *:1 ea;
     local m:1 = mask8;
     val = val & (~m);
@@ -1858,10 +1861,9 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 }
 
 # BCLR IND16,Z: 28 mm gggg
-:BCLR simm16^",Z,#"^mask8  is op8=0x28; mask8; simm16 & ctxZK{
-    local bank:1 = ctxZK;
+:BCLR simm16^",Z,#"^mask8  is op8=0x28; mask8; simm16 {
     local off:2 = simm16;
-    local ea:3 = (zext(bank) << 16) | zext(IZ + off);
+    local ea:3 = ZKIZ + sext(off);
     local val:1 = *:1 ea;
     local m:1 = mask8;
     val = val & (~m);
@@ -1911,10 +1913,9 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 }
 
 # BSET IND8,Z: 17 29 mm ff
-:BSET imm8_2^",Z,#"^mask8  is op8=0x17; op8b=0x29; mask8; imm8_2 & ctxZK{
-    local bank:1 = ctxZK;
+:BSET imm8_2^",Z,#"^mask8  is op8=0x17; op8b=0x29; mask8; imm8_2 {
     local off:1 = imm8_2;
-    local ea:3 = (zext(bank) << 16) | zext(IZ + zext(off));
+    local ea:3 = ZKIZ + zext(off);
     local val:1 = *:1 ea;
     local m:1 = mask8;
     val = val | m;
@@ -1945,10 +1946,9 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 }
 
 # BSET IND16,Z: 29 mm gggg
-:BSET simm16^",Z,#"^mask8  is op8=0x29; mask8; simm16 & ctxZK{
-    local bank:1 = ctxZK;
+:BSET simm16^",Z,#"^mask8  is op8=0x29; mask8; simm16 {
     local off:2 = simm16;
-    local ea:3 = (zext(bank) << 16) | zext(IZ + off);
+    local ea:3 = ZKIZ + sext(off);
     local val:1 = *:1 ea;
     local m:1 = mask8;
     val = val | m;
@@ -1996,9 +1996,9 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 }
 
 # BCLRW IND16,Z: 27 28 gggg mmmm
-:BCLRW simm16^",Z,#"^imm16_2  is op8=0x27; op8b=0x28; simm16; imm16_2 & ctxZK{
-    local bank:1 = ctxZK;
-    local ea:3 = (zext(bank) << 16) | zext(IZ + simm16);
+:BCLRW simm16^",Z,#"^imm16_2  is op8=0x27; op8b=0x28; simm16; imm16_2 {
+    local off:2 = simm16;
+    local ea:3 = ZKIZ + sext(off);
     local val:2 = *:2 ea;
     val = val & (~imm16_2);
     *:2 ea = val;
@@ -2041,9 +2041,9 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 }
 
 # BSETW IND16,Z: 27 29 gggg mmmm
-:BSETW simm16^",Z,#"^imm16_2  is op8=0x27; op8b=0x29; simm16; imm16_2 & ctxZK{
-    local bank:1 = ctxZK;
-    local ea:3 = (zext(bank) << 16) | zext(IZ + simm16);
+:BSETW simm16^",Z,#"^imm16_2  is op8=0x27; op8b=0x29; simm16; imm16_2 {
+    local off:2 = simm16;
+    local ea:3 = ZKIZ + sext(off);
     local val:2 = *:2 ea;
     val = val | imm16_2;
     *:2 ea = val;
@@ -2088,10 +2088,9 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 }
 
 # BRCLR IND8,Z: EB mm ff rr
-:BRCLR imm8_2^",Z,#"^mask8, BRREL8  is op8=0xEB; mask8; imm8_2; BRREL8 & ctxZK{
-    local bank:1 = ctxZK;
+:BRCLR imm8_2^",Z,#"^mask8, BRREL8  is op8=0xEB; mask8; imm8_2; BRREL8 {
     local off:1 = imm8_2;
-    local ea:3 = (zext(bank) << 16) | zext(IZ + zext(off));
+    local ea:3 = ZKIZ + zext(off);
     local val:1 = *:1 ea;
     local m:1 = mask8;
     if ((val & m) == 0) goto BRREL8;
@@ -2116,10 +2115,9 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 }
 
 # BRCLR IND16,Z: 2A mm gggg rrrr
-:BRCLR simm16^",Z,#"^mask8, BRREL16  is op8=0x2A; mask8; simm16; BRREL16 & ctxZK{
-    local bank:1 = ctxZK;
+:BRCLR simm16^",Z,#"^mask8, BRREL16  is op8=0x2A; mask8; simm16; BRREL16 {
     local off:2 = simm16;
-    local ea:3 = (zext(bank) << 16) | zext(IZ + off);
+    local ea:3 = ZKIZ + sext(off);
     local val:1 = *:1 ea;
     local m:1 = mask8;
     if ((val & m) == 0) goto BRREL16;
@@ -2161,10 +2159,9 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 }
 
 # BRSET IND8,Z: AB mm ff rr
-:BRSET imm8_2^",Z,#"^mask8, BRREL8  is op8=0xAB; mask8; imm8_2; BRREL8 & ctxZK{
-    local bank:1 = ctxZK;
+:BRSET imm8_2^",Z,#"^mask8, BRREL8  is op8=0xAB; mask8; imm8_2; BRREL8 {
     local off:1 = imm8_2;
-    local ea:3 = (zext(bank) << 16) | zext(IZ + zext(off));
+    local ea:3 = ZKIZ + zext(off);
     local val:1 = *:1 ea;
     local m:1 = mask8;
     if ((val & m) == m) goto BRREL8;
@@ -2189,10 +2186,9 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 }
 
 # BRSET IND16,Z: 2B mm gggg rrrr
-:BRSET simm16^",Z,#"^mask8, BRREL16  is op8=0x2B; mask8; simm16; BRREL16 & ctxZK{
-    local bank:1 = ctxZK;
+:BRSET simm16^",Z,#"^mask8, BRREL16  is op8=0x2B; mask8; simm16; BRREL16 {
     local off:2 = simm16;
-    local ea:3 = (zext(bank) << 16) | zext(IZ + off);
+    local ea:3 = ZKIZ + sext(off);
     local val:1 = *:1 ea;
     local m:1 = mask8;
     if ((val & m) == m) goto BRREL16;
