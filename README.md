@@ -57,14 +57,17 @@ spec it was created with — its analysis is unaffected. To adopt the JTEC prese
 - **20-bit banked addressing.** The CPU16 forms 20-bit (1 MB) addresses from a 16-bit value plus
   a 4-bit bank/extension register (`EK`, `XK`, `YK`, `ZK`, `SK`, `PK`). Addresses are computed to
   the full 20 bits so Ghidra builds correct cross-references across banks.
-- **Static bank resolution via context.** `EXT16` and Z-indexed modes read the `ctxEK` / `ctxZK`
-  context variables (set in the `.pspec`) at disassembly time, so banked operands resolve to real
-  addresses. This assumes the bank registers are effectively constant in the target firmware (true
-  for JTEC+); see limitations.
+- **Static bank resolution via context.** `EXT16` operands read the `ctxEK` context variable (set
+  in the `.pspec`) at disassembly time, so extended operands resolve to real addresses. This
+  assumes EK is effectively constant in the target firmware. Z-indexed modes use the `ZK` register
+  (since v1.1.0-fix.1): give the decompiler its value with *Set Register Values* at function
+  entries, or a `tracked_set` in the `.pspec` as the JTEC preset does; `ctxZK` is kept as a context
+  field but no longer used by the semantics.
 - **Pipeline-relative branches.** Branch targets are computed as `inst_start + 6 + offset` to match
   the CPU16's 3-word instruction prefetch.
 - **Registers** are modeled with their natural sub-register relationships (A/B as halves of D, E:D
-  for 32-bit values, composite `SSP` = `SK:SP` for the 20-bit stack) and the CCR flags as
+  for 32-bit values, composite `SSP` = `SK:SP` for the 20-bit stack and `ZKIZ` = `ZK:IZ` for the
+  Z index register, so a TSZ frame pointer reads as the stack) and the CCR flags as
   bit-ranges (`N`, `Z`, `V`, `C`, `H`, `S`, `MV`, `EV`, plus the MAC `SM` and interrupt-priority
   field).
 
@@ -132,6 +135,34 @@ tests/                 disassembly regression harness (see tests/README.md)
 - **`ApplyRegisterBitEquates.java`** + **`MC68HC16Z3_regs.h`** — apply symbolic bit-mask equates to
   MMIO register accesses (e.g. `SIMCR`, `SYNCR`) for readable peripheral code. Chip-generic to the
   Z2/Z3, so usable on any HC16Z binary.
+
+---
+
+## Changes in v1.1.0-fix.1
+
+Semantic (p-code) fixes made while decompiling firmware for a CPU16 part, each
+checked against the CPU16 Reference Manual (CPU16RM/AD, in `MC68HC16Z3/data/Manual/`). Only the
+PSHM/PULM register-list text changes the disassembly (masks with the reserved bit 7 now read
+`...,RSVD7`); everything else is p-code, so re-analyze programs (and re-import them, since the
+register layout of IZ/ZK changed) to pick it up.
+
+| Fix | Was | Now | CPU16RM |
+|---|---|---|---|
+| PSHM/PULM order | both register lists reversed | PSHM stacks D first (highest address), PULM pulls CCR first; the generator `68HC16_PSHM_PULM.sinc.py` writes the committed `.sinc` again and has `--check` | PSHM p. 6-173, PULM p. 6-177 |
+| JMP/JSR `IND20` | added XK/YK/ZK to the base | `$0:index + 20-bit offset`, extension field not used | JMP p. 6-116, JSR p. 6-117, 4.3.3 |
+| Stack pointer | pushes pre-decremented, so every push/pull was a word off | SK:SP points at the next free word: store then decrement, increment then load; PSHA/PSHB/PULA/PULB move SP by one byte | PSHA to PULM, pp. 6-171 to 6-177 |
+| JSR/BSR/LBSR/RTS/RTI/SWI | JSR only moved SP; RTS returned to itself; RTI ignored the PC offset | JSR/BSR/LBSR stack PC (return + 2) and CCR with PK; RTS pulls PK and PC and returns to PK:PC - 2; RTI to PK:PC - 6; SWI stacks its frame and clears PK | JSR p. 6-117, BSR p. 6-70, LBSR p. 6-134, RTS p. 6-194, RTI p. 6-193, SWI p. 6-212 |
+| Calling conventions | `extrapop=0` (the caller's SP drifted by 4 at each call), stack arguments at SP+4 | `extrapop=4`, stack arguments at entry SP+6, return address declared at stack offset 2 | (follows from the frame above) |
+| `,Z` addressing | `(ctxZK << 16) \| (IZ + offset)` from a context value | `ZK:IZ + offset`, a 20-bit sum using the new composite register `ZKIZ`; TSZ/TZS move the whole 20-bit value, so frame-pointer locals decompile as stack variables | 4.3.3, 4.3.5, Table 3-1 |
+| ADCx/SBCx flags | C and V computed on `M + C`, which wraps when M is all ones and C is set | flags of the whole `A + M + C` / `A - M - C`; ADCA/ADCB H includes the carry | ADCA p. 6-9, Table 6-35 |
+| ROR, RORA/B/D/E, RORW | V from the old sign bit | V = N xor C after the rotate | Table 6-35 |
+
+The JTEC preset gets a `tracked_set` of ZK = 0xF so its `,Z` accesses still resolve.
+
+Known gaps, not changed here: `,X` and `,Y` indexed modes still add the offset within the bank
+(the CPU forms a 20-bit sum); AIX/AIY/AIZ/AIS, ADX/ADY/ADZ, AEX/AEY/AEZ don't carry into the
+extension field (CPU16RM 3.3.2.5); PSHMAC/PULMAC frame order is unverified; EDIV/EDIVS/IDIV/FDIV
+branch inside the instruction on a zero divisor.
 
 ---
 
