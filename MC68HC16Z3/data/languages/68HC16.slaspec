@@ -284,16 +284,15 @@ macro pull16(val) {
     val = *:2 SSP;
 }
 
-# Subroutine frame (JSR, BSR, LBSR): push PC, then CCR with the PK field. The stacked PC is the
-# return address + 2 (the PC runs ahead of the instruction; RTS subtracts 2), and the stacked PK
-# is the return address's bank.
+# Subroutine frame (JSR, BSR, LBSR). The CPU pushes PC (the return address + 2, since the PC runs
+# ahead of the instruction; RTS subtracts 2) and then CCR with the PK field: 4 bytes. Only the
+# stack pointer change is modeled here, not the two stores: SK:SP points at the next free word,
+# so the stacked PC lands on the word the caller's SP points at after the return, and Ghidra's
+# decompiler then keeps those stores in the caller as stack variables (in about 150 more
+# functions of a 1200-function ROM). An emulator that needs the frame must push it itself
+# (RTS below reads it as the CPU does).
 macro pushReturn(next) {
-    local stk:3 = next;
-    stk = stk + 2;
-    push16(stk:2);
-    local hi:3 = stk >> 16;
-    local ccr_out:2 = (CCR & 0xFFF0) | (hi:2 & 0x000F);
-    push16(ccr_out);
+    SSP = SSP - 4;
 }
 
 define pcodeop wait_for_interrupt;   # WAI    - stack context, halt until interrupt
