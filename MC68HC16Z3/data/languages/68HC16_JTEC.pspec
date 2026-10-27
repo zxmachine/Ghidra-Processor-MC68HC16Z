@@ -41,6 +41,11 @@
         <set name="ctxEK" val="0"/>
         <set name="ctxZK" val="15"/> 
     </context_set>
+    <!-- ,Z accesses use the ZK register (not ctxZK) since v1.1.0-fix.1: JTEC+ keeps ZK = 0xF,
+         so tell the decompiler and constant propagation that value at every address -->
+    <tracked_set space="ram">
+        <set name="ZK" val="15"/>
+    </tracked_set>
 </context_data>
 	<volatile outputop="write_volatile" inputop="read_volatile">
     	<range space="ram" first="0x0FF700" last="0x0FF73F"/>  <!-- ADC -->
