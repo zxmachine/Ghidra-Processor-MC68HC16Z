@@ -242,16 +242,32 @@ macro makeAddr20(ext4, reg16, out_addr) {
     out_addr = (zext(ext4) << 16) | zext(reg16);
 }
 
+# Stack model (CPU16RM 5.x, PSHM p. 6-173, PULM p. 6-177, JSR p. 6-117, RTS p. 6-194):
+# SK:SP points to the next free word. A push stores at SK:SP and then decrements it; a pull
+# increments it first and then loads. So TSX/TSY/TSZ (SK:SP + 2) point at the last word pushed.
+
 # Push a 16-bit word onto the stack
 macro push16(val) {
-    SSP = SSP - 2;
     *:2 SSP = val;
+    SSP = SSP - 2;
 }
 
 # Pull a 16-bit word from the stack
 macro pull16(val) {
-    val = *:2 SSP;
     SSP = SSP + 2;
+    val = *:2 SSP;
+}
+
+# Subroutine frame (JSR, BSR, LBSR): push PC, then CCR with the PK field. The stacked PC is the
+# return address + 2 (the PC runs ahead of the instruction; RTS subtracts 2), and the stacked PK
+# is the return address's bank.
+macro pushReturn(next) {
+    local stk:3 = next;
+    stk = stk + 2;
+    push16(stk:2);
+    local hi:3 = stk >> 16;
+    local ccr_out:2 = (CCR & 0xFFF0) | (hi:2 & 0x000F);
+    push16(ccr_out);
 }
 
 define pcodeop wait_for_interrupt;   # WAI    - stack context, halt until interrupt
@@ -893,7 +909,7 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 
 # = BSR (Branch to Subroutine) =
 :BSR  REL8ADDR   is op8=0x36; REL8ADDR {
-    SSP = SSP - 4;
+    pushReturn(inst_next);
     call REL8ADDR;
 }
 
@@ -921,7 +937,7 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 
 # = LBSR (Long Branch to Subroutine) =
 :LBSR  REL16ADDR   is op8=0x27; op8b=0xF9; REL16ADDR {
-    SSP = SSP - 4;
+    pushReturn(inst_next);
     call REL16ADDR;
 }
 
@@ -938,26 +954,33 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 
 # = JSR (Jump to Subroutine - Extended 20 and Indexed 20) =
 :JSR EXT20ADDR       is op8=0xFA; EXT20ADDR {
-    SSP = SSP - 4;
+    pushReturn(inst_next);
     call EXT20ADDR;
 }
 :JSR IND20X          is op8=0x89; IND20X {
-    SSP = SSP - 4;
+    pushReturn(inst_next);
     call [IND20X];
 }
 :JSR IND20Y          is op8=0x99; IND20Y {
-    SSP = SSP - 4;
+    pushReturn(inst_next);
     call [IND20Y];
 }
 :JSR IND20Z          is op8=0xA9; IND20Z {
-    SSP = SSP - 4;
+    pushReturn(inst_next);
     call [IND20Z];
 }
 
 # = RTS (Return from Subroutine) =
 :RTS   is op8=0x27; op8b=0xF7 {
-    SSP = SSP + 4;
-    return [PC];
+    # Pull PK (from the stacked CCR word; the flags are not restored), pull PC, PK:PC - 2 => PK:PC
+    local ccr_in:2;
+    pull16(ccr_in);
+    syncPullPK(ccr_in);
+    local pc_in:2;
+    pull16(pc_in);
+    local ret:3 = (((zext(ccr_in) & 0x000F) << 16) | zext(pc_in)) - 2;
+    ret = ret & 0xFFFFF;
+    return [ret];
 }
 
 
@@ -968,15 +991,24 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
     syncPullPK(CCR);
     local retaddr:2;
     pull16(retaddr);
-    local fulladdr:3 = (zext(PK:1) << 16) | zext(retaddr);
+    # the stacked PC of an exception frame is the return address + 6 (CPU16RM RTI p. 6-193)
+    local fulladdr:3 = (((zext(PK:1) << 16) | zext(retaddr)) - 6) & 0xFFFFF;
     return [fulladdr];
 }
 
 # = SWI (Software Interrupt) =
 :SWI   is op8=0x37; op8b=0x20 {
-    SSP = SSP - 4;
+    # (PK:PC) + 2 => PK:PC; push PC; push CCR; 0 => PK; vector 6 => PC (CPU16RM SWI p. 6-212).
+    # The stacked PC is the next instruction + 6, which RTI turns back into the next instruction.
+    local stk:3 = inst_next;
+    stk = stk + 6;
+    push16(stk:2);
+    local hi:3 = stk >> 16;
+    local ccr_out:2 = (CCR & 0xFFF0) | (hi:2 & 0x000F);
+    push16(ccr_out);
+    PK = 0;
     local vec:3 = 0x000C;
-    local target:2 = *:2 vec;
+    local target:3 = zext(*:2 vec);
     call [target];
 }
 
@@ -1440,10 +1472,10 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 # SECTION: PSHA/PSHB/PULA/PULB  (Stack byte operations)
 # ============================================================================
 
-:PSHA   is op8=0x37; op8b=0x08  { SSP = SSP - 2; *:1 (SSP+1) = A; }
-:PSHB   is op8=0x37; op8b=0x18  { SSP = SSP - 2; *:1 (SSP+1) = B; }
-:PULA   is op8=0x37; op8b=0x09  { A = *:1 (SSP+1); SSP = SSP + 2; }
-:PULB   is op8=0x37; op8b=0x19  { B = *:1 (SSP+1); SSP = SSP + 2; }
+:PSHA   is op8=0x37; op8b=0x08  { *:1 (SSP+1) = A; SSP = SSP - 1; }    # SP+1; store; SP-2 (CPU16RM p. 6-171)
+:PSHB   is op8=0x37; op8b=0x18  { *:1 (SSP+1) = B; SSP = SSP - 1; }    # (p. 6-172)
+:PULA   is op8=0x37; op8b=0x09  { A = *:1 (SSP+2); SSP = SSP + 1; }    # SP+2; load; SP-1 (p. 6-175)
+:PULB   is op8=0x37; op8b=0x19  { B = *:1 (SSP+2); SSP = SSP + 1; }    # (p. 6-176)
 
 # ============================================================================
 # SECTION: PSHM / PULM (Push/Pull Multiple Registers)
@@ -2431,6 +2463,7 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 # ============================================================================
 
 # PSHMAC: Push all MAC registers onto stack  (INH, opcode 27B8)
+# (The order and frame layout here are the module's original model, not checked against CPU16RM.)
 # Pushes: AM_EXT, AM(4 bytes), HR, IR, XMSK:YMSK
 :PSHMAC  is op8=0x27; op8b=0xB8 {
     # Push XMSK:YMSK as a word

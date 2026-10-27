@@ -68,10 +68,10 @@
   <stackpointer register="SSP" space="ram" growth="negative"/>
 
   <!-- Return address: pushed onto stack by BSR/JSR, pulled by RTS.
-       The CPU16 stores PK:PC on the stack. Ghidra models this via PC. -->
+       The CPU16 stacks PC (return address + 2) at SP+4 and CCR with PK at SP+2. -->
        
   <returnaddress>
-    <register name="PC"/>
+    <varnode space="stack" offset="2" size="4"/>
   </returnaddress>
 
   <!-- ================================================================
@@ -105,9 +105,12 @@
          - IX commonly serves as the frame pointer.
          - Typical prologue: pshm <regs>; ais #-<size>; tsx
          - stackshift=4: JSR/BSR push PK:PC + CCR = 4 bytes.
+         - SK:SP points at the next free word, so on entry the stacked CCR
+           (with PK) is at SP+2, the stacked PC at SP+4 and the first stacked
+           argument at SP+6; extrapop=4 because RTS pulls both words.
        ================================================================ -->
   <default_proto>
-    <prototype name="__asmcall" extrapop="0" stackshift="4">
+    <prototype name="__asmcall" extrapop="4" stackshift="4">
   <input>
     <!-- First arg: D register for char/short/int/pointer (1-2 bytes) -->
     <pentry minsize="1" maxsize="2">
@@ -121,7 +124,7 @@
     </pentry>
     <!-- Remaining args: stack, right-to-left -->
     <pentry minsize="1" maxsize="500" align="2">
-      <addr offset="4" space="stack"/>
+      <addr offset="6" space="stack"/>
     </pentry>
   </input>
   <output>
@@ -174,7 +177,7 @@
        ================================================================ -->
 
 <!-- IZ-preserving variant (dedicated global data pointer in IZ) -->
-<prototype name="__pcm_default" extrapop="0" stackshift="4">
+<prototype name="__pcm_default" extrapop="4" stackshift="4">
   <input>
     <pentry minsize="1" maxsize="2">
       <register name="D"/>
@@ -183,7 +186,7 @@
       <addr space="join" piece1="E" piece2="D"/>
     </pentry>
     <pentry minsize="1" maxsize="500" align="2">
-      <addr offset="4" space="stack"/>
+      <addr offset="6" space="stack"/>
     </pentry>
   </input>
   <output>
@@ -218,7 +221,7 @@
 
 
 <!-- 1D table lookup: IX=table pointer, A=lookup param -->
-<prototype name="__table_1d" extrapop="0" stackshift="4">
+<prototype name="__table_1d" extrapop="4" stackshift="4">
   <input>
     <pentry minsize="2" maxsize="2">
       <register name="IX"/>
@@ -258,7 +261,7 @@
 </prototype>
 
 <!-- 2D table lookup: IX=table pointer, A=row param, B=column param -->
-<prototype name="__table_2d" extrapop="0" stackshift="4">
+<prototype name="__table_2d" extrapop="4" stackshift="4">
   <input>
     <pentry minsize="2" maxsize="2">
       <register name="IX"/>
