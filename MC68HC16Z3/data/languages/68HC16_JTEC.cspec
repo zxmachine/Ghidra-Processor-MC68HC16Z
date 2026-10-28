@@ -137,8 +137,7 @@
     <register name="SSP"/>
     <register name="SP"/>
     <register name="SK"/>
-    <register name="IX"/>
-    <register name="XK"/>
+    <register name="XKIX"/>  <!-- XK:IX as one value (,X addressing reads the composite) -->
     <register name="YK"/>
     <register name="ZKIZ"/>  <!-- ZK:IZ, so the composite used by ,Z addressing is preserved as a whole -->
     <register name="PK"/>
@@ -191,8 +190,7 @@
     <register name="SSP"/>
     <register name="SP"/>
     <register name="SK"/>
-    <register name="IX"/>
-    <register name="XK"/>
+    <register name="XKIX"/>  <!-- XK:IX as one value (,X addressing reads the composite) -->
     <register name="YK"/>
     <register name="ZKIZ"/>  <!-- ZK:IZ, so the composite used by ,Z addressing is preserved as a whole -->
     <register name="PK"/>
@@ -233,8 +231,7 @@
     <register name="SSP"/>
     <register name="SP"/>
     <register name="SK"/>
-    <register name="IX"/>
-    <register name="XK"/>
+    <register name="XKIX"/>  <!-- XK:IX as one value (,X addressing reads the composite) -->
     <register name="YK"/>
     <register name="ZKIZ"/>  <!-- ZK:IZ, so the composite used by ,Z addressing is preserved as a whole -->
     <register name="PK"/>
