@@ -1210,73 +1210,81 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 :EMUL   is op8=0x37; op8b=0x25  { local res:4 = zext(E:2) * zext(D:2); E = res[16,16]; D = res[0,16]; C_flag = D[15,1]; setNZ16(D); }
 :EMULS  is op8=0x37; op8b=0x26  { local res:4 = sext(E:2) * sext(D:2); E = res[16,16]; D = res[0,16]; setNZ16(D); }
 
-# = EDIV / EDIVS =
+# = EDIV / EDIVS / IDIV / FDIV =
+# Branch-free: the zero-divisor and overflow cases are selected with masks instead of a branch
+# inside the instruction, so that with a constant divisor (LDX #0x64; EDIV) the decompiler is
+# left with no dead code. The p-code divides by 1 where the divisor is 0, so that it never
+# divides by zero, and then keeps the CPU's result for that case.
+
+# EDIV: (E:D) / IX => IX, remainder => D (CPU16RM p. 6-101). A zero divisor leaves IX and D
+# unchanged and takes the divide-by-zero exception (not modeled); the flags are then undefined.
+# N, Z and C are undefined after overflow (V set).
 :EDIV   is op8=0x37; op8b=0x28  {
     local dividend:4 = (zext(E:2) << 16) | zext(D:2);
-    local divisor:4 = zext(IX:2);
-    if (divisor == 0) goto <divzero>;
+    local zero:1 = (IX == 0);
+    local divisor:4 = zext(IX:2) + zext(zero);
     local quot:4 = dividend / divisor;
     local rem:4 = dividend % divisor;
-    IX = quot:2;
-    D = rem:2;
+    local keep:2 = zext(zero) * 0xFFFF;
+    IX = (quot:2 & ~keep) | (IX & keep);
+    D = (rem:2 & ~keep) | (D & keep);
     setNZ16(IX);
     V_flag = (quot > 0xFFFF);
-    C_flag = 0;
-    goto <done>;
-    <divzero>
-    C_flag = 1;
-    <done>
+    C_flag = (rem << 1) >= divisor;
 }
 
-# = EDIVS =
+# EDIVS: signed (E:D) / IX => IX, remainder => D (CPU16RM p. 6-103); zero divisor as EDIV.
+# C is the rounding bit, 2 * |remainder| >= |divisor| (the manual gives "2 x Remainder >= Divisor"
+# without the signs).
 :EDIVS  is op8=0x37; op8b=0x29  {
     local dividend:4 = (zext(E:2) << 16) | zext(D:2);
-    local divisor:4 = sext(IX:2);
-    if (divisor == 0) goto <divzero>;
+    local zero:1 = (IX == 0);
+    local divisor:4 = sext(IX:2) + zext(zero);
     local quot:4 = dividend s/ divisor;
-    local rem:4 = dividend - (quot * divisor);
-    IX = quot:2;
-    D = rem:2;
+    local rem:4 = dividend s% divisor;
+    local keep:2 = zext(zero) * 0xFFFF;
+    IX = (quot:2 & ~keep) | (IX & keep);
+    D = (rem:2 & ~keep) | (D & keep);
     setNZ16(IX);
     V_flag = (quot s> 0x7FFF) | (quot s< -32768);
-    C_flag = 0;
-    goto <done>;
-    <divzero>
-    C_flag = 1;
-    <done>
+    local rs:4 = rem s>> 31;
+    local ds:4 = divisor s>> 31;
+    local arem:4 = (rem ^ rs) - rs;
+    local adiv:4 = (divisor ^ ds) - ds;
+    C_flag = (arem << 1) >= adiv;
 }
 
-# = IDIV =
+# IDIV: D / IX => IX, remainder => D (CPU16RM p. 6-111). A zero divisor sets IX to $FFFF and
+# leaves D indeterminate (unchanged here); there is no exception. N is not affected.
 :IDIV   is op8=0x37; op8b=0x2A  {
-    C_flag = (IX == 0);
+    local zero:1 = (IX == 0);
+    local divisor:2 = IX + zext(zero);
+    local quot:2 = D / divisor;
+    local rem:2 = D % divisor;
+    local keep:2 = zext(zero) * 0xFFFF;
+    C_flag = zero;
     V_flag = 0;
-    if (IX == 0) goto <divzero>;
-    local dividend:2 = D;
-    local divisor:2 = IX;
-    IX = dividend / divisor;
-    D = dividend % divisor;
+    IX = quot | keep;
+    D = (rem & ~keep) | (D & keep);
     Z_flag = (IX == 0);
-    goto <done>;
-    <divzero>
-    IX = 0xFFFF;
-    <done>
 }
 
-# = FDIV =
+# FDIV: (D:$0000) / IX => IX, remainder => D (CPU16RM p. 6-109). If IX <= D (overflow, which
+# includes a zero divisor) IX is set to $FFFF and D is indeterminate (unchanged here); there is
+# no exception. V = (IX <= D) and C = (IX = 0) are taken before the operation; N is not affected.
 :FDIV   is op8=0x37; op8b=0x2B  {
+    local zero:1 = (IX == 0);
+    local ovf:1 = (IX <= D);
+    local divisor:4 = zext(IX:2) + zext(zero);
     local dividend:4 = zext(D:2) << 16;
-    local divisor:4 = zext(IX:2);
-    if (divisor == 0) goto <divzero>;
     local quot:4 = dividend / divisor;
     local rem:4 = dividend % divisor;
-    IX = quot:2;
-    D = rem:2;
-    V_flag = (D >= IX);
-    C_flag = 0;
-    goto <done>;
-    <divzero>
-    C_flag = 1;
-    <done>
+    local keep:2 = zext(ovf) * 0xFFFF;
+    V_flag = ovf;
+    C_flag = zero;
+    IX = quot:2 | keep;
+    D = (rem:2 & ~keep) | (D & keep);
+    Z_flag = (IX == 0);
 }
 
 # = DAA =
