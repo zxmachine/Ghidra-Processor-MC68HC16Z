@@ -138,7 +138,7 @@ tests/                 disassembly regression harness (see tests/README.md)
 
 ---
 
-## Changes in v1.1.0-fix.1 and .2
+## Changes in v1.1.0-fix.1 to .3
 
 Semantic (p-code) fixes made while decompiling firmware for a CPU16 part, each
 checked against the CPU16 Reference Manual (CPU16RM/AD, in `MC68HC16Z3/data/Manual/`). Only the
@@ -158,6 +158,8 @@ register layout of IX/IY/IZ and XK/YK/ZK changed) to pick it up.
 | ROR, RORA/B/D/E, RORW | V from the old sign bit | V = N xor C after the rotate | Table 6-35 |
 | `,X`/`,Y` addressing (.2) | `(XK << 16) \| (IX + offset)`, within the bank | `XK:IX + offset` as a 20-bit sum with composite registers `XKIX`/`YKIY`; TSX/TSY/TXS/TYS and TXY..TZY move the 20-bit value as one | 4.3.3, 4.3.5, Table 3-1, TSX p. 6-241, TXS p. 6-245, TXY p. 6-247 |
 | AIX/AIY/AIZ, ADX..ADZ, AEX..AEZ, ABX..ABZ, MOVB/MOVW post-increment (.2) | added to the 16-bit register only | add to the 20-bit XK:IX (YK:IY, ZK:IZ), carrying into the extension field | 3.3.2.5, AIX p. 6-25, ADX p. 6-19, AEX p. 6-21, ABX p. 6-5, Table 3-1 |
+| EDIV/EDIVS/IDIV/FDIV (.3) | branched inside the instruction on a zero divisor, so a constant divisor left the decompiler a dead block; FDIV left IX unchanged on a zero divisor and truncated the quotient on overflow; EDIV/EDIVS cleared C | branch-free: the zero-divisor and overflow results are selected with masks. EDIV/EDIVS leave IX and D unchanged on a zero divisor (the exception is not modeled), C is the rounding bit; IDIV gives IX = $FFFF; FDIV gives IX = $FFFF when IX <= D, with V and C taken before the divide | EDIV p. 6-101, EDIVS p. 6-103, FDIV p. 6-109, IDIV p. 6-111 |
+| Dead-code delay (.3) | the decompiler warned "Heritage AFTER dead removal" where a ,Z address became constant late (ZK restored by PULM K in a loop) | cspec `<deadcodedelay space="ram" delay="4"/>`; no register delay (with one from the start, Ghidra 12.2 removed reachable blocks) | (decompiler setting) |
 | PSHM K (.2) | packed the byte-wide extension registers unmasked | each field masked to 4 bits, so PULM K restores exactly what PSHM K saved | PSHM p. 6-173, 3.3.2.4 |
 
 The JTEC preset gets a `tracked_set` of ZK = 0xF so its `,Z` accesses still resolve.
@@ -165,8 +167,9 @@ The JTEC preset gets a `tracked_set` of ZK = 0xF so its `,Z` accesses still reso
 Known gaps, not changed here: JSR/BSR/LBSR don't store their frame (storing it makes the
 decompiler keep the stores and show the caller's stack pointer after each call as a pointer into
 its frame; changing stackshift, returnaddress or localrange, or locking the callee's prototype,
-didn't help); PSHMAC/PULMAC frame order is unverified; EDIV/EDIVS/IDIV/FDIV branch inside the
-instruction on a zero divisor.
+didn't help); PSHMAC/PULMAC frame order is unverified; the EDIV/EDIVS divide-by-zero exception is not
+modeled. A variable divisor now decompiles as a select, e.g. q = a / (x + (x == 0)), where it was
+an if (x == 0) branch.
 
 ---
 
