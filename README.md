@@ -138,13 +138,13 @@ tests/                 disassembly regression harness (see tests/README.md)
 
 ---
 
-## Changes in v1.1.0-fix.1
+## Changes in v1.1.0-fix.1 and .2
 
 Semantic (p-code) fixes made while decompiling firmware for a CPU16 part, each
 checked against the CPU16 Reference Manual (CPU16RM/AD, in `MC68HC16Z3/data/Manual/`). Only the
 PSHM/PULM register-list text changes the disassembly (masks with the reserved bit 7 now read
 `...,RSVD7`); everything else is p-code, so re-analyze programs (and re-import them, since the
-register layout of IZ/ZK changed) to pick it up.
+register layout of IX/IY/IZ and XK/YK/ZK changed) to pick it up.
 
 | Fix | Was | Now | CPU16RM |
 |---|---|---|---|
@@ -156,13 +156,17 @@ register layout of IZ/ZK changed) to pick it up.
 | `,Z` addressing | `(ctxZK << 16) \| (IZ + offset)` from a context value | `ZK:IZ + offset`, a 20-bit sum using the new composite register `ZKIZ`; TSZ/TZS move the whole 20-bit value, so frame-pointer locals decompile as stack variables | 4.3.3, 4.3.5, Table 3-1 |
 | ADCx/SBCx flags | C and V computed on `M + C`, which wraps when M is all ones and C is set | flags of the whole `A + M + C` / `A - M - C`; ADCA/ADCB H includes the carry | ADCA p. 6-9, Table 6-35 |
 | ROR, RORA/B/D/E, RORW | V from the old sign bit | V = N xor C after the rotate | Table 6-35 |
+| `,X`/`,Y` addressing (.2) | `(XK << 16) \| (IX + offset)`, within the bank | `XK:IX + offset` as a 20-bit sum with composite registers `XKIX`/`YKIY`; TSX/TSY/TXS/TYS and TXY..TZY move the 20-bit value as one | 4.3.3, 4.3.5, Table 3-1, TSX p. 6-241, TXS p. 6-245, TXY p. 6-247 |
+| AIX/AIY/AIZ, ADX..ADZ, AEX..AEZ, ABX..ABZ, MOVB/MOVW post-increment (.2) | added to the 16-bit register only | add to the 20-bit XK:IX (YK:IY, ZK:IZ), carrying into the extension field | 3.3.2.5, AIX p. 6-25, ADX p. 6-19, AEX p. 6-21, ABX p. 6-5, Table 3-1 |
+| PSHM K (.2) | packed the byte-wide extension registers unmasked | each field masked to 4 bits, so PULM K restores exactly what PSHM K saved | PSHM p. 6-173, 3.3.2.4 |
 
 The JTEC preset gets a `tracked_set` of ZK = 0xF so its `,Z` accesses still resolve.
 
-Known gaps, not changed here: `,X` and `,Y` indexed modes still add the offset within the bank
-(the CPU forms a 20-bit sum); AIX/AIY/AIZ/AIS, ADX/ADY/ADZ, AEX/AEY/AEZ don't carry into the
-extension field (CPU16RM 3.3.2.5); PSHMAC/PULMAC frame order is unverified; EDIV/EDIVS/IDIV/FDIV
-branch inside the instruction on a zero divisor.
+Known gaps, not changed here: JSR/BSR/LBSR don't store their frame (storing it makes the
+decompiler keep the stores and show the caller's stack pointer after each call as a pointer into
+its frame; changing stackshift, returnaddress or localrange, or locking the callee's prototype,
+didn't help); PSHMAC/PULMAC frame order is unverified; EDIV/EDIVS/IDIV/FDIV branch inside the
+instruction on a zero divisor.
 
 ---
 

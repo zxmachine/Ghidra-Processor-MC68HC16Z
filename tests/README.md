@@ -5,9 +5,10 @@ text through the **installed** Ghidra 68HC16 language. It guards against future 
 silently breaking instruction decoding.
 
 It does **not** test p-code/emulation semantics (flag math, MAC accumulation) — only disassembly
-text. In particular these v1.1.0-fix.1 fixes are p-code only and are not covered here: the
+text. In particular these v1.1.0-fix.1 and .2 fixes are p-code only and are not covered here: the
 PSHM/PULM stacking order (only the `RSVD7` text is), the JMP/JSR IND20 effective address, the stack
-pointer model and the RTS/RTI/SWI frames, the `,Z` ZK:IZ addressing, the ADC/SBC
+pointer model and the RTS/RTI/SWI frames, the `,X`/`,Y`/`,Z` 20-bit addressing, the extension-field carries of AIx/ADx/AEx/ABx,
+the PSHM K masking, the ADC/SBC
 carry and overflow and the ROR overflow flag. They were validated by decompiling and emulating
 real firmware (see the changelog in the top-level README). Semantic validation would need Ghidra's emulator test rig and a CPU16 toolchain, which is out
 of scope here.
