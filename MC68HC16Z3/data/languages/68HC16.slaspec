@@ -1126,30 +1126,32 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
 :TDP   is op8=0x37; op8b=0x2D  { CCR = (CCR & 0x000F) | (D & 0xFFF0); }
 
 # = Add B to Index Register =
-:ABX   is op8=0x37; op8b=0x4F  { local ext:3 = XKIX; ext = ext + zext(B:1); XK = ext[16,4]; IX = ext:2; }
-:ABY   is op8=0x37; op8b=0x5F  { local ext:3 = YKIY; ext = ext + zext(B:1); YK = ext[16,4]; IY = ext:2; }
-:ABZ   is op8=0x37; op8b=0x6F  { local ext:3 = (zext(ZK:1) << 16) | zext(IZ:2); ext = ext + zext(B:1); ZK = ext[16,4]; IZ = ext:2; }
+:ABX   is op8=0x37; op8b=0x4F  { XKIX = XKIX + zext(B:1); }
+:ABY   is op8=0x37; op8b=0x5F  { YKIY = YKIY + zext(B:1); }
+:ABZ   is op8=0x37; op8b=0x6F  { ZKIZ = ZKIZ + zext(B:1); }
 
 # = ADE/SDE =
 :ADE   is op8=0x27; op8b=0x78  { addFlags16(E, D); E = E + D; setNZ16(E); }
 :SDE   is op8=0x27; op8b=0x79  { subFlags16(E, D); E = E - D; setNZ16(E); }
 
 # = Add D/E to Index Registers =
-:ADX   is op8=0x37; op8b=0xCD  { IX = IX + D; }
-:ADY   is op8=0x37; op8b=0xDD  { IY = IY + D; }
-:ADZ   is op8=0x37; op8b=0xED  { IZ = IZ + D; }
-:AEX   is op8=0x37; op8b=0x4D  { IX = IX + E; }
-:AEY   is op8=0x37; op8b=0x5D  { IY = IY + E; }
-:AEZ   is op8=0x37; op8b=0x6D  { IZ = IZ + E; }
+# AIx, ADx, AEx and ABx add to the 20-bit XK:IX (YK:IY, ZK:IZ): an overflow out of the index register
+# changes the extension field (CPU16RM 3.3.2.5; ADX p. 6-19, AEX p. 6-21, ABX p. 6-5, AIX p. 6-25).
+:ADX   is op8=0x37; op8b=0xCD  { XKIX = XKIX + sext(D); }
+:ADY   is op8=0x37; op8b=0xDD  { YKIY = YKIY + sext(D); }
+:ADZ   is op8=0x37; op8b=0xED  { ZKIZ = ZKIZ + sext(D); }
+:AEX   is op8=0x37; op8b=0x4D  { XKIX = XKIX + sext(E); }
+:AEY   is op8=0x37; op8b=0x5D  { YKIY = YKIY + sext(E); }
+:AEZ   is op8=0x37; op8b=0x6D  { ZKIZ = ZKIZ + sext(E); }
 
 # = Add Immediate to Index / Stack =
-:AIX "#"^simm8   is op8=0x3C; simm8    { IX = IX + sext(simm8:1); Z_flag = (IX == 0); }
-:AIY "#"^simm8   is op8=0x3D; simm8    { IY = IY + sext(simm8:1); Z_flag = (IY == 0); }
-:AIZ "#"^simm8   is op8=0x3E; simm8    { IZ = IZ + sext(simm8:1); Z_flag = (IZ == 0); }
+:AIX "#"^simm8   is op8=0x3C; simm8    { local o:1 = simm8; XKIX = XKIX + sext(o); Z_flag = (IX == 0); }
+:AIY "#"^simm8   is op8=0x3D; simm8    { local o:1 = simm8; YKIY = YKIY + sext(o); Z_flag = (IY == 0); }
+:AIZ "#"^simm8   is op8=0x3E; simm8    { local o:1 = simm8; ZKIZ = ZKIZ + sext(o); Z_flag = (IZ == 0); }
 :AIS "#"^simm8   is op8=0x3F; simm8    { SSP = SSP + sext(simm8:1); }
-:AIX "#"^simm16  is op8=0x37; op8b=0x3C; simm16  { IX = IX + simm16; Z_flag = (IX == 0); }
-:AIY "#"^simm16  is op8=0x37; op8b=0x3D; simm16  { IY = IY + simm16; Z_flag = (IY == 0); }
-:AIZ "#"^simm16  is op8=0x37; op8b=0x3E; simm16  { IZ = IZ + simm16; Z_flag = (IZ == 0); }
+:AIX "#"^simm16  is op8=0x37; op8b=0x3C; simm16  { local o:2 = simm16; XKIX = XKIX + sext(o); Z_flag = (IX == 0); }
+:AIY "#"^simm16  is op8=0x37; op8b=0x3D; simm16  { local o:2 = simm16; YKIY = YKIY + sext(o); Z_flag = (IY == 0); }
+:AIZ "#"^simm16  is op8=0x37; op8b=0x3E; simm16  { local o:2 = simm16; ZKIZ = ZKIZ + sext(o); Z_flag = (IZ == 0); }
 :AIS "#"^simm16  is op8=0x37; op8b=0x3F; simm16  { SSP = SSP + simm16; }
 
 # = Register Clear, Complement, Negate (Inherent) =
@@ -1678,7 +1680,8 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
     local dst:3 = (zext(bank) << 16) | zext(addr16:2);
     local val:1 = *:1 src;
     *:1 dst = val;
-    IX = IX + sext(imm8:1);
+    local o:1 = imm8;
+    XKIX = XKIX + sext(o);
     setNZ8(val); V_flag = 0;
 }
 
@@ -1689,7 +1692,8 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
     local src:3 = (zext(bank) << 16) | zext(addr16:2);
     local val:1 = *:1 src;
     *:1 dst = val;
-    IX = IX + sext(imm8:1);
+    local o:1 = imm8;
+    XKIX = XKIX + sext(o);
     setNZ8(val); V_flag = 0;
 }
 
@@ -1700,7 +1704,8 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
     local dst:3 = (zext(bank) << 16) | zext(addr16:2);
     local val:2 = *:2 src;
     *:2 dst = val;
-    IX = IX + sext(imm8:1);
+    local o:1 = imm8;
+    XKIX = XKIX + sext(o);
     setNZ16(val); V_flag = 0;
 }
 
@@ -1711,7 +1716,8 @@ IND20Z: ext20_bank^":"^ext20_addr^",Z"  is ext20_pad=0 & ext20_bank & ext20_addr
     local src:3 = (zext(bank) << 16) | zext(addr16:2);
     local val:2 = *:2 src;
     *:2 dst = val;
-    IX = IX + sext(imm8:1);
+    local o:1 = imm8;
+    XKIX = XKIX + sext(o);
     setNZ16(val); V_flag = 0;
 }
 
