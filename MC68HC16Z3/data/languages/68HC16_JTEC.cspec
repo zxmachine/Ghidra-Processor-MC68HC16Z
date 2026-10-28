@@ -98,6 +98,11 @@
          - Treated as clobbered by a call: D, E, IY, CCR
          - Treated as preserved across a call: IX (frame pointer), SP/SK,
            and all address-extension registers (EK, XK, YK, ZK, PK)
+         - The <unaffected> and <killedbycall> lists name each register once,
+           by its widest form (SSP for SK:SP, D for A and B): the decompiler
+           matches a register against the last record that starts at or
+           below it, so SK listed next to SSP gave SSP an unknown effect and
+           an INDIRECT on the stack pointer at every call (see 68HC16.cspec)
        
        IZ IS DELIBERATELY PRESERVED: this firmware dedicates IZ=0x8000 as
        a global data pointer, set once at startup and never modified by a
@@ -141,8 +146,6 @@
   </output>
   <unaffected>
     <register name="SSP"/>
-    <register name="SP"/>
-    <register name="SK"/>
     <register name="XKIX"/>  <!-- XK:IX as one value (,X addressing reads the composite) -->
     <register name="YK"/>
     <register name="ZKIZ"/>  <!-- ZK:IZ, so the composite used by ,Z addressing is preserved as a whole -->
@@ -150,8 +153,6 @@
     <register name="EK"/>
   </unaffected>
   <killedbycall>
-    <register name="A"/>
-    <register name="B"/>
     <register name="D"/>
     <register name="E"/>
     <register name="IY"/>
@@ -194,8 +195,6 @@
   </output>
   <unaffected>
     <register name="SSP"/>
-    <register name="SP"/>
-    <register name="SK"/>
     <register name="XKIX"/>  <!-- XK:IX as one value (,X addressing reads the composite) -->
     <register name="YK"/>
     <register name="ZKIZ"/>  <!-- ZK:IZ, so the composite used by ,Z addressing is preserved as a whole -->
@@ -203,8 +202,6 @@
     <register name="EK"/>
   </unaffected>
   <killedbycall>
-    <register name="A"/>
-    <register name="B"/>
     <register name="D"/>
     <register name="E"/>
     <register name="IY"/>
@@ -235,8 +232,6 @@
   </output>
   <unaffected>
     <register name="SSP"/>
-    <register name="SP"/>
-    <register name="SK"/>
     <register name="XKIX"/>  <!-- XK:IX as one value (,X addressing reads the composite) -->
     <register name="YK"/>
     <register name="ZKIZ"/>  <!-- ZK:IZ, so the composite used by ,Z addressing is preserved as a whole -->
@@ -244,8 +239,6 @@
     <register name="EK"/>
   </unaffected>
   <killedbycall>
-    <register name="A"/>
-    <register name="B"/>
     <register name="D"/>
     <register name="E"/>
     <register name="IY"/>

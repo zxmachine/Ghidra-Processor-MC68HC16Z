@@ -101,6 +101,16 @@
          - Clobbered by a call: A, B, D, E, IY, IZ, CCR
          - Preserved across a call: IX (common frame pointer), SP/SK, and
            the architecturally-sticky bank registers (EK, XK, YK, ZK, PK).
+         - The <unaffected> and <killedbycall> lists name a register only once,
+           by its widest form: SSP for SK:SP, D for A and B. The decompiler
+           sorts these records by start offset alone and checks a register
+           against the last record that starts at or below it, so listing
+           SK (offset 0xA0, 1 byte) next to SSP (0xA0, 3 bytes) made it check
+           SSP against SK: SSP got an unknown effect, every call an INDIRECT
+           on the stack pointer, and the caller lost track of its stack after
+           the first call (stack arguments missing from calls, pushes after a
+           call shown as pointer arithmetic on a BADSPACEBASE in_SSP).
+           A wider record covers the registers inside it.
 
        NOTE: IZ is treated as clobbered here. If your firmware dedicates an
        index register to a global data pointer (as JTEC+ does with IZ),
@@ -146,8 +156,6 @@
   </output>
   <unaffected>
     <register name="SSP"/>
-    <register name="SP"/>
-    <register name="SK"/>
     <register name="XKIX"/>  <!-- XK:IX as one value (,X addressing reads the composite) -->
     <register name="YK"/>
     <register name="ZK"/>
@@ -155,8 +163,6 @@
     <register name="EK"/>
   </unaffected>
   <killedbycall>
-    <register name="A"/>
-    <register name="B"/>
     <register name="D"/>
     <register name="E"/>
     <register name="IY"/>
@@ -204,8 +210,6 @@
   </output>
   <unaffected>
     <register name="SSP"/>
-    <register name="SP"/>
-    <register name="SK"/>
     <register name="XKIX"/>  <!-- XK:IX as one value (,X addressing reads the composite) -->
     <register name="YK"/>
     <register name="ZKIZ"/>  <!-- ZK:IZ, so the composite used by ,Z addressing is preserved as a whole -->
@@ -213,8 +217,6 @@
     <register name="EK"/>
   </unaffected>
   <killedbycall>
-    <register name="A"/>
-    <register name="B"/>
     <register name="D"/>
     <register name="E"/>
     <register name="IY"/>
@@ -243,8 +245,6 @@
   </output>
   <unaffected>
     <register name="SSP"/>
-    <register name="SP"/>
-    <register name="SK"/>
     <register name="XKIX"/>  <!-- XK:IX as one value (,X addressing reads the composite) -->
     <register name="YK"/>
     <register name="ZKIZ"/>  <!-- ZK:IZ, so the composite used by ,Z addressing is preserved as a whole -->
@@ -252,8 +252,6 @@
     <register name="EK"/>
   </unaffected>
   <killedbycall>
-    <register name="A"/>
-    <register name="B"/>
     <register name="D"/>
     <register name="E"/>
     <register name="IY"/>
@@ -284,8 +282,6 @@
   </output>
   <unaffected>
     <register name="SSP"/>
-    <register name="SP"/>
-    <register name="SK"/>
     <register name="XKIX"/>  <!-- XK:IX as one value (,X addressing reads the composite) -->
     <register name="YK"/>
     <register name="ZKIZ"/>  <!-- ZK:IZ, so the composite used by ,Z addressing is preserved as a whole -->
@@ -293,8 +289,6 @@
     <register name="EK"/>
   </unaffected>
   <killedbycall>
-    <register name="A"/>
-    <register name="B"/>
     <register name="D"/>
     <register name="E"/>
     <register name="IY"/>
