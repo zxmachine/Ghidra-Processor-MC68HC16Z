@@ -4,7 +4,8 @@ PSHM pushes the registers in mask-bit order D, E, IX, IY, IZ, K, CCR, so D is st
 the highest address. PULM pulls in its own mask-bit order CCR, K, IZ, IY, IX, E, D, from the lowest
 address first (CPU16RM PSHM p. 6-173, PULM p. 6-177: "PULM mask order is the reverse of PSHM mask
 order"). Masks with the reserved bit 7 set get ",RSVD7" in their text so that Ghidra's assembler
-never picks them for a plain register list.
+never picks them for a plain register list. The K word packs the four 4-bit extension fields;
+each is masked to 4 bits when pushed, so a PULM K restores exactly what PSHM K saved.
 
 usage: python 68HC16_PSHM_PULM.sinc.py [path]            write the .sinc (default: next to this file)
        python 68HC16_PSHM_PULM.sinc.py [path] --check    compare the file with what would be written
@@ -15,7 +16,7 @@ import sys
 PSHM = ["D", "E", "IX", "IY", "IZ", "K", "CCR"]          # mask bit 0..6
 PULM = ["CCR", "K", "IZ", "IY", "IX", "E", "D"]          # mask bit 0..6
 PUSH = {"CCR": "local ccr_out:2; syncPushCCR(ccr_out); push16(ccr_out);",
-        "K": "local pk:2=(zext(EK:1)<<12)|(zext(XK:1)<<8)|(zext(YK:1)<<4)|zext(ZK:1); push16(pk);"}
+        "K": "local pk:2=(zext(EK:1&0xF)<<12)|(zext(XK:1&0xF)<<8)|(zext(YK:1&0xF)<<4)|zext(ZK:1&0xF); push16(pk);"}
 PULL = {"CCR": "pull16(CCR); syncPullPK(CCR);",
         "K": "local un:2; pull16(un); EK=un[12,4]; XK=un[8,4]; YK=un[4,4]; ZK=un[0,4];"}
 
