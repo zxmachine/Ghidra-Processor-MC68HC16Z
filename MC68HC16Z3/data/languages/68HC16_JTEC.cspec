@@ -68,6 +68,12 @@
     <varnode space="stack" offset="2" size="4"/>
   </returnaddress>
 
+  <!-- RAM addresses of ,Z accesses (ZK:IZ) sometimes become constant only late, after ZK comes back
+       through PSHM K / PULM K in a loop; delaying dead-code elimination in the ram space lets the
+       decompiler see those accesses before it removes stores. (A register delay is not set: with
+       one from the start, Ghidra 12.2 wrongly removed reachable blocks in some functions.) -->
+  <deadcodedelay space="ram" delay="4"/>
+
   <!-- ================================================================
        Default Calling Convention: __pcm_default
 
